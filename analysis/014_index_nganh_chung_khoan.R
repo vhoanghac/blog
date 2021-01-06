@@ -49,7 +49,13 @@ calculate_return <- function(data){
            skew = skewness(daily_return))
 }
 
-# Data 2020:  ----
+# PURR map()
+
+# data_completed <- data_nested %>% 
+#   mutate(data_completed = data %>% map(calculate_return))  
+
+
+#Data 2020:  ----
 data_2020_tbl <- data_nested %>% 
   unnest() %>% 
   filter(date >= "2020-01-01") %>% 
@@ -176,7 +182,7 @@ data_2020_tbl %>%
   
   
 # Data 2008 - 2020: ----
-data_2018_2020_tbl <- data_nested %>% 
+data_2008_2020_tbl <- data_nested %>% 
   unnest() %>%
   mutate(year_num = year(date)) %>% 
   group_by(value, year_num) %>% 
@@ -185,7 +191,7 @@ data_2018_2020_tbl <- data_nested %>%
 
 
 # SKEW chart: 
-data_2018_2020_tbl %>% 
+data_2008_2020_tbl %>% 
   group_by(year, value) %>% 
   
   ggplot(aes(x = value,
@@ -211,9 +217,39 @@ data_2018_2020_tbl %>%
   
 
 # Min return by year
-data_2018_2020_tbl %>% 
+data_2008_2020_tbl %>% 
   group_by(year, value) %>% 
   filter(daily_return == min(daily_return)) %>% 
+  
+  mutate(month = as.numeric(month)) %>% 
+  
+  ggplot(aes(x = month,
+             y = daily_return,
+             color = value)) +
+  
+  geom_point() +
+  
+  scale_x_continuous(breaks = 1:12,
+                     labels = months) +
+  
+  expand_limits(y = 0) +
+  
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1L),
+                     breaks = scales::pretty_breaks(n = 4)) +
+  
+  facet_wrap(~year, ncol = 3, scales = "free_y") + theme_tq() + theme2 +
+  
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) +
+  
+  labs(x = "",
+       y = "Mức sụt giảm",
+       title = "Mức \u0111ộ sụt giảm lớn nhất trong tháng của các ngành giai \u0111oạn 2008 - 2020",
+       color = "Ngành")
+
+# Max return by year
+data_2008_2020_tbl %>% 
+  group_by(year, value) %>% 
+  filter(daily_return == max(daily_return)) %>% 
   
   mutate(month = as.numeric(month)) %>% 
   
