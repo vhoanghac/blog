@@ -1,0 +1,620 @@
+---
+title: "Phân ngành dựa vào biến động giá cổ phiếu. Unsupervised learning, k-means clustering."
+date: "10 Jan, 2021"
+output: 
+    html_document:
+        toc: TRUE
+        theme: default
+        highlight: default
+        code_folding: hide
+        df_print: paged
+---
+
+```{=html}
+<style type="text/css">
+  body{
+  font-family: serif;
+  font-size: 16pt;
+}
+  
+  h1.title {
+  font-size: 38px;
+  color: #cd2626;
+}
+</style>
+```
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+# Import libraries
+library(tidyverse)
+library(tidyquant)
+library(broom)
+library(umap)
+library(plotly)
+```
+
+[**Bài viết này không viết về thị trường chứng khoán, các quỹ mở hay phương hướng đầu tư...**]{style="color:#cd2626"}
+
+Trong bài viết trước tôi sử dụng dữ liệu của FireAnt để phân tích các ngành nghề trong năm 2020 và quãng thời gian 2008-\>2020.
+
+Có một bất cập là về việc phân ngành thì FireAnt phân ngành khác của Vietstock, Vietstock phân ngành khác cophieu68 và các trang này phân ngành khác HOSE hay chỉ số ngành trên VnDirect.
+
+Là một nhà đầu tư cá nhân thì không thể nào tiếp cận được với các dữ liệu đó ngoại trừ phải trả phí cho các nhà cung cấp. Nhưng như tôi đã nói, mỗi nhà cung cấp lại phân ngành khác nhau dẫn đến việc chỉ số ngành nghề khác nhau.
+
+Trên thị trường chứng khoán, các doanh nghiệp không chỉ hoạt động ở mỗi một ngành nghề họ đăng ký mà hoạt động đa ngành nên đôi lúc khiến việc phân ngành gặp khó khăn.
+
+------------------------------------------------------------------------
+
+# 1. Mục tiêu bài viết
+
+Mặc dù chỉ là ý tưởng nhưng tôi hy vọng có thể mang vào áp dụng được.
+
+[**Ví dụ như tôi được giao nhiệm vụ tìm các doanh nghiệp đang hoạt động trên thị trường, các đối thủ của họ trong ngành để cung cấp dịch vụ của mình. Vấn đề ở đây là tôi không biết ai là ai, liệu những doanh nghiệp đó có phù hợp với sản phẩm của tôi không.**]{style="color:#cd2626"}
+
+Tôi không có dữ liệu nào khác ngoài giá cổ phiếu của họ cả. Vì thế, tôi giả sử rằng sẽ sử dụng biến động giá cổ phiếu của họ để thực hiện việc phân loại các doanh nghiệp này.
+
+Trong thực tế, việc này có thể dùng để phân loại khách hàng dựa trên đơn hàng bán được, các nhóm khách hàng chi trả nhiều tiền... Nhưng nay tôi sẽ thử áp dụng lên giá cổ phiếu.
+
+Có một vài vấn đề tôi quan ngại trước khi bước vào phân tích, đó là:
+
+Có những quãng thời gian cả thị trường chung bị tác động, khiến đa số cổ phiếu giảm điểm như đợt COVID vừa rồi. Điều này có thể dẫn đến một vài sự khác biệt trong kết quả.
+
+Hoặc là có những doanh nghiệp hoạt động trên HNX, khối lượng giao dịch các cổ phiếu thấp, cho nên không phản ánh được toàn bộ giá cổ phiếu.
+
+Hoặc là ảnh hưởng đến từ chính nội tại của doanh nghiệp đó chứ ngành nghề không bị ảnh hưởng.
+
+Dữ liệu tôi sẽ lấy trên thị trường. Tiếp theo là tôi đặt tên ngành các cổ phiếu dựa theo tiêu chuẩn trên Vietstock. Rồi tiếp theo là phân tích xem các cổ phiếu đó có cùng ngành không.
+
+------------------------------------------------------------------------
+
+# 2. Unsupervised learning
+
+Mục tiêu của tôi không phải là để dự đoán. Mà là sử dụng dữ liệu trong quá khứ để phân loại các doanh nghiệp, tìm sự đồng nhất giữa các doanh nghiệp, gộp các doanh nghiệp đó vào một nhóm gọi là clusters.
+
+Nó sẽ giúp tôi từ:
+
+<center>
+
+![](https://i.imgur.com/2ViF5eE.png)
+
+</center>
+
+Trở thành:
+
+<center>
+
+![](https://vohoanghac.com/wp-content/uploads/2021/01/6079.png)
+
+</center>
+
+---
+
+# 3. Lấy dữ liệu từ CafeF 
+
+Vì bài viết cần nhiều thông tin về giá cổ phiếu, nên tôi load từ nguồn CafeF: <http://s.cafef.vn/du-lieu/download.chn> . File Upto 3 sàn (điều chỉnh). Đây là một tập hợp 3 file csv tổng hợp lại giá các cổ phiếu trên HOSE, HNX và UPCOM.
+
+
+
+Thử nhập dữ liệu của sàn HSX:
+
+```{r}
+# Import data
+HOSE_tbl <- read_csv("data/CafeF.HSX.Upto06.01.2021.csv")
+
+head(HOSE_tbl)
+```
+
+Dữ liệu có 7 variables, chúng ta chỉ cần: `Ticker`, `Date` và giá `Close` nhưng cột date hiện tại đang là số (double) chứ không phải là `<date>` nên phải  đổi lại, tiện thể đổi tên các variables cho dễ làm việc. Và tạo thêm 1 variable khác là `san`, ý chỉ đây là những cổ phiếu thuộc HOSE.
+
+```{r}
+# Tidy HOSE_tbl
+
+HOSE_tidied_tbl <- HOSE_tbl %>% 
+  
+  # Đổi tên column <DTYYYYMMDD> thành date
+  rename(date   = '<DTYYYYMMDD>',
+         symbol = '<Ticker>',
+         close  = '<Close>') %>% 
+  
+  select(date, symbol, close) %>% 
+  
+  # Đổi class cột date từ double sang date
+  mutate(date = ymd(date),
+         san  = "HOSE") %>% 
+  arrange(date)
+
+head(HOSE_tidied_tbl)
+```
+
+Dữ liệu trông có vẻ ổn hơn trước, bây giờ tôi tiến hành làm thêm các file HNX và UPCOM.
+
+```{r}
+HNX_tbl <- read_csv("data/CafeF.HNX.Upto06.01.2021.csv")
+
+HNX_tidied_tbl <- HNX_tbl %>% 
+  rename(date   = '<DTYYYYMMDD>',
+         symbol = '<Ticker>',
+         close  = '<Close>') %>% 
+  select(date, symbol, close) %>% 
+  mutate(date   = ymd(date),
+         san    = "HNX") %>% 
+  arrange(date)
+  
+UPCOM_tbl <- read_csv("data/CafeF.UPCOM.Upto06.01.2021.csv")
+
+UPCOM_tidied_tbl <- UPCOM_tbl %>% 
+  rename(date   = '<DTYYYYMMDD>',
+         symbol = '<Ticker>',
+         close  = '<Close>') %>% 
+  select(date, symbol, close) %>% 
+  mutate(date   = ymd(date),
+         san    = "UPCOM") %>% 
+  arrange(date)
+```
+
+Trước khi gộp 3 "đứa" này lại với nhau, tôi kiểm tra xem thử coi có dữ liệu nào bị trùng lặp trong 3 cái dataset này không.
+
+Kiểm tra HOSE:
+
+```{r}
+HOSE_tidied_tbl %>% 
+  group_by(date, symbol) %>% 
+  mutate(n = n()) %>% 
+  filter(n > 1)
+```
+
+Tốt. Bây giờ kiểm tra HNX:
+
+```{r}
+HNX_tidied_tbl %>% 
+  group_by(date, symbol) %>% 
+  mutate(n = n()) %>% 
+  filter(n > 1) %>% 
+  arrange(symbol)
+```
+
+Hmm... tại sao lại có dữ liệu trùng ngày trong đây...
+
+Tôi sẽ sử dụng `distinct()` để loại bỏ dữ liệu trùng và kiểm tra lại lần nữa:
+
+```{r}
+HNX_tidied_tbl <- HNX_tidied_tbl %>% 
+  distinct(.keep_all = TRUE)
+
+HNX_tidied_tbl %>% 
+  group_by(date, symbol) %>% 
+  mutate(n = n()) %>% 
+  filter(n > 1)
+  
+```
+
+Tốt. Tiếp đến là UPCOM:
+
+```{r}
+UPCOM_tidied_tbl %>% 
+  group_by(date, symbol) %>% 
+  mutate(n = n()) %>% 
+  filter(n > 1)
+```
+
+Lại bị trùng...
+
+```{r}
+UPCOM_tidied_tbl <- UPCOM_tidied_tbl %>% 
+  distinct(.keep_all = TRUE)
+```
+
+Để dễ dàng lọc dữ liệu, tôi tiến hành gộp cả 3 "đứa" lại làm một.
+
+```{r}
+data_full_tbl <- HOSE_tidied_tbl %>% 
+  bind_rows(HNX_tidied_tbl, UPCOM_tidied_tbl) 
+```
+
+Tiếp theo, tôi sẽ lựa chọn ra các cổ phiếu tương ứng với các ngành dựa theo trang Vietstock: <https://finance.vietstock.vn/chi-so-nganh.htm> .
+
+Mục đích của bước này là để tôi thêm 1 variable `Ngành` vào dữ liệu. Vì là Unsupervised Learning nên tôi cần một label đã được chọn lọc từ Vietstock kể kiểm tra kết quả xem việc phân ngành bằng biến động giá cổ phiếu có tương tự như việc Vietstock phân ngành hay không.
+
+```{r}
+banbuon_tbl <- data_full_tbl %>% 
+  filter(symbol %in% c("AAV", "ABS", "AMV", "ARM", "CKV", "CLM", "CMC", "CVN", "DBT", "DGW", "DPS", "DXV", "FID", "GMA", "HAI",
+                     "HAT", "HHS", "HKB", "HMC", "HTL", "JVC", "KDM", "KLF", "KMT", "MCF", "MEL", "PCT", "PET", "PIT", "PLX",
+                     "PMG", "PPY", "PSC", "PSD", "PSE", "PSH", "PTB", "QBS", "SGT", "SHN", "SMA", "SMC", "SRA", "ST8", "TCH",
+                     "TDG", "THS", "TLH", "TNA", "TNI", "TSC", "TTB", "TTH", "UNI", "VFG", "VID", "VKC", "VMD", "VPG", "VTV")) %>% 
+  mutate(sector = "Ban Buon")
+
+banbuon_tbl
+```
+
+Có vẻ ổn. Nhưng mà cách làm trên không hiệu quả đối với các ngành có nhiều cổ phiếu, tôi không thể ngồi gõ liên tục được. Vì thế tôi xuất ra file csv tên các cổ phiếu.
+
+```{r}
+
+# Cach thu cong:
+baohiem_tbl <- data_full_tbl %>% 
+  filter(symbol %in% c("BIC", "BMI", "BVH", "PGI", "PRE", "PTI", "PVI", "VNR")) %>% 
+  mutate(sector = "Bao Hiem")
+
+
+# Import csv label:
+
+batdongsan_label <- read_csv("data/batdongsan_label.csv") %>% 
+  pull(symbol)
+
+# Import bat dong san
+batdongsan_tbl <- data_full_tbl %>% 
+  filter(symbol %in% batdongsan_label) %>% 
+  mutate(sector = "Bat Dong San")
+```
+
+Amazing. 79 cái tên bất động sản được lọc ra mà không phải mất công ngồi gõ. Tôi tiếp tục làm với các ngành còn lại:
+
+```{r}
+
+# Viet mot function de import cho le
+
+import_label <- function(data, name){
+  
+  label <- read_csv(data) %>% 
+    pull(symbol)
+  
+  data_full_tbl %>% 
+    filter(symbol %in% label) %>% 
+    mutate(sector = name)
+}
+
+# Chung khoan:
+chungkhoan_tbl <- import_label("data/chungkhoan_label.csv", "Chung Khoan")
+
+# Ban Le:
+banle_tbl <- import_label("data/banle_label.csv", "Ban Le")
+  
+# Cham soc suc khoe: (Y te)
+cssk_tbl <- import_label("data/cssk_label.csv", "Cham Soc Suc Khoe")
+
+# Ngan hang:
+nganhang_tbl <- import_label("data/nganhang_label.csv", "Ngan Hang")
+
+# Thuc Pham Do Uong
+thucphamdouong_tbl <- import_label("data/thucpham_douong_label.csv", "Thuc Pham Do Uong")
+
+# Che Bien Thuy San
+thuysan_tbl <- import_label("data/thuysan_label.csv", "Thuy San")
+
+# Vat Lieu Xay Dung:
+vlxd_tbl <- import_label("data/vlxd_label.csv", "Vat Lieu Xay Dung")
+
+# Tien ich:
+tienich_tbl <- import_label("data/tienich_label.csv", "Tien Ich")
+
+# Van tai kho bai:
+vantai_tbl <- import_label("data/vantai_lalbel.csv", "Van Tai Kho Bai")
+
+# Xay dung:
+xaydung_tbl <- import_label("data/xd_label.csv", "Xay Dung")
+
+
+# ??? Sao toi khong dung purr map cho le ???
+```
+
+Các cổ phiếu tôi lựa chọn thuộc các ngành:
+
+-   Bán buôn.
+-   Bất động sản .
+-   Chứng khoán.
+-   Bán lẻ.
+-   Chăm sóc sức khỏe.
+-   Ngân hàng.
+-   Thực phẩm đồ uống.
+-   Chế biến thủy sản.
+-   Vật liệu xây dựng.
+-   Tiện ích.
+-   Vận tải kho bãi.
+-   Xây dựng.
+
+OK. Mọi thứ có vẻ hoàn hảo nên tôi sẽ gộp các dữ liệu này lại với nhau và lựa chọn quãng thời gian phân tích là đầu năm 2016.
+
+```{r}
+data_nganh_raw_tbl <- banbuon_tbl %>% 
+  bind_rows(baohiem_tbl, batdongsan_tbl, chungkhoan_tbl, banle_tbl, cssk_tbl, nganhang_tbl, 
+            thucphamdouong_tbl, thuysan_tbl, vlxd_tbl, tienich_tbl, vantai_tbl, xaydung_tbl) %>% 
+  
+  # Doi class cua san va sector thanh factor
+  mutate_at(.vars = c("san", "sector"), as_factor) %>% 
+
+  # Chon date tu nam 2016:
+  filter(date >= "2016-01-01") %>% 
+  
+  arrange(symbol)
+```
+
+Xem có bao nhiêu quan sát tương ứng với từng cổ phiếu.
+
+```{r}
+data_nganh_raw_tbl %>% 
+  group_by(symbol) %>% 
+  summarise(n = n()) %>% 
+  arrange(n)
+```
+
+Tôi thấy rằng trong dữ liệu có rất nhiều cổ phiếu với số lượng quan sát rất ít, không phù hợp để phân tích nên phải loại ra. Ví dụ như TNH, PRE, MSB... đây là những cổ phiếu mới lên sàn gần đây.
+
+Tôi sẽ lựa chọn các cổ phiếu với số ngày giao dịch là hơn 900 ngày để phục vụ cho việc phân tích.
+
+```{r}
+data_nganh_tbl <- data_nganh_raw_tbl %>% 
+  group_by(symbol) %>% 
+  mutate(n = n()) %>% 
+  ungroup() %>% 
+  filter(n >= 900) %>% 
+  select(-n)
+```
+
+
+Thống kê thử xem có bao nhiêu cổ phiếu tương ứng với mỗi ngành:
+
+```{r}
+data_nganh_tbl %>% 
+  select(symbol, sector) %>% 
+  distinct() %>% 
+  group_by(sector) %>% 
+  summarise(total = n()) %>% 
+  arrange(desc(total))
+```
+
+
+Ta thấy xếp ở vị trí thứ nhất là ngành bất động sản với 54 doanh nghiệp bất động sản, tiếp đến là xây dựng, bán buôn...
+
+Kiểm tra thử với cổ phiếu VNM:
+
+```{r}
+data_nganh_tbl %>% 
+  filter(symbol == "VNM")
+```
+
+```{r, fig.align='center'}
+data_nganh_tbl %>% 
+  filter(symbol == "VNM") %>% 
+  ggplot(aes(x = date,
+             y = close)) + 
+  
+  geom_line()
+```
+
+# 4. Tính toán
+
+## 4.1 Tính daily returns
+
+Theo dữ liệu ở trên, giá của các cổ phiếu hoàn toàn khác nhau. Nó có thể chạy từ 0 cho đến vô cùng, điều đó là không phù hợp để làm việc nên ta cần dữ liệu phải được chuẩn hóa (standardized), đại loại là phải đặt tất cả lên cùng một thước đo chung.
+
+Cho nên tôi sẽ không thể sử dụng giá của các cổ phiếu để mà phân loại ngành mà sẽ sử dụng dữ liệu biến động giá mỗi ngày của các cổ phiếu. Với công thức:
+
+
+$$ 
+R_{daily} = \frac{P_{i}-P_{i-1}}{P_{i-1}}
+$$ 
+
+```{r}
+data_nganh_returns_tbl <- data_nganh_tbl %>% 
+  group_by(symbol) %>% 
+  
+  # Tinh daily returns:
+  mutate(returns = (close - lag(close)) / lag(close)) %>% 
+  
+  # Loai bo NA
+  na.omit() %>% 
+  ungroup() %>% 
+  
+  # Loai bo cot close vi khong can nua:
+  select(-close)
+
+data_nganh_returns_tbl
+```
+
+Để thích hợp cho việc phân tích thì ta không sử dụng dữ liệu dạng long này. Mà ta spread nó ra thành dạng wide. Các biến của ta sẽ là `date`, chứ không phải `san`, `sector`. Các dòng sẽ được thay thế bằng tên cổ phiếu `symbol` . Giá trị sẽ là daily `returns`.
+
+Có những cổ phiếu không lên sàn vào năm 2016, hoặc có những cổ phiếu kém thanh khoản dẫn đến việc giá cổ phiếu không thay đổi hằng ngày thì tôi sẽ ghi nhận giá trị bằng 0.
+
+```{r}
+data_nganh_spread <- data_nganh_returns_tbl %>% 
+  select(-san, -sector) %>% 
+  
+  spread(key = date,
+         value = returns,
+         fill = 0)
+
+data_nganh_spread
+```
+
+OK bây giờ nhìn quá đẹp luôn.
+
+## 4.2 Thuật toán k means 
+
+Mục đích của sử dụng thuật toán này là để nhóm các đối tượng doanh nghiệp này vào từng cụm (cluster), và các đối tượng này có những nét tương đồng với nhau.
+
+Chúng ta thường áp dụng trong nhiều lĩnh vực khác nhau như:
+
+- Xác định nhóm khách hàng tiềm năng sử dụng sản phẩm.
+- Dự đoán xu hướng khách hàng...
+
+Có rất nhiều kỹ thuật phân cụm nhưng nay tôi sẽ sử dụng k-means bởi nó đơn giản, phổ biến. 
+
+Với thuật toán k-means, ta phải lựa chọn số lượng cụm k, tạm gọi là nhóm. Ta có thể gõ random số lượng nhóm mà ta muốn phân ra. Nhưng có cách hiệu quả hơn về việc tìm số lượng nhóm. 
+
+Tôi sẽ giả sử thiết lập 30 cụm, sau đó chạy thuật toán, tìm giá trị total.withinss tương ứng với mỗi cụm trong 150 lần chạy.
+
+```{r}
+# Viet function 
+kmeans_nganh_fun <- function(center = 5){
+  data_nganh_spread %>% 
+    select(-symbol) %>% 
+    kmeans(centers = center,
+           nstart = 150)
+}
+
+# Chay thuat toan
+kmeans_nganh_tbl <- tibble(centers = 1:8) %>%
+  mutate(k_means = centers %>% map(kmeans_nganh_fun)) %>% 
+  mutate(glance = k_means %>% map(glance))
+```
+
+Rồi biểu diễn bằng biểu đồ.
+
+```{r, fig.align='center'}
+# Ve bieu do:
+kmeans_nganh_tbl %>% 
+  unnest(glance) %>%
+  
+  ggplot(aes(x = centers,
+             y = tot.withinss)) +
+  
+  geom_point() + 
+  
+  geom_line()
+
+```
+
+Mục đích của công đoạn này là tìm điểm gãy.
+
+Từ cụm 1 đến cụm 2 (từ trái qua) là sự sụt giảm của giá trị tot.withinss lớn nhất. Sau đó giảm dần. Từ cụm thứ 3 trở về sau là biến đổi tuyến tính.
+
+```{r, fig.align='center'}
+# Ve bieu do:
+kmeans_nganh_tbl %>% 
+  unnest(glance) %>%
+  
+  ggplot(aes(x = centers,
+             y = tot.withinss)) +
+  
+  geom_point(aes(color = centers %in% c(3:5)),
+             show.legend = FALSE,
+             size = 2) + 
+  
+  geom_line() +
+  
+  ggrepel::geom_label_repel(aes(label = centers,
+                                color = centers %in% c(3:5)),
+                            size = 4, 
+                            show.legend = FALSE) +
+  
+  theme_classic()
+
+```
+
+Vì thế, tôi sẽ lựa chọn phân cụm từ 3 đến 5 cụm.
+
+
+## 4.3 Thuật toán UMAP
+
+Tôi sử dụng function `umap()` để tạo một table, chứa dữ liệu về vị trí của từng cổ phiếu mà tôi sẽ sử dụng để vẽ biểu đồ.
+
+Giải thích về Umap: 
+
+https://www2.math.upenn.edu/~jhansen/2018/05/04/UMAP/
+
+https://umap-learn.readthedocs.io/en/latest/how_umap_works.html
+
+```{r}
+# Su dung umap:
+set.seed(11)
+umap <- data_nganh_spread %>% 
+  select(-symbol) %>% 
+  umap(method = "umap-learn")
+
+
+umap_tbl <- umap$layout %>% 
+  
+  # Doi sang tibble
+  as_tibble() %>% 
+  
+  # Gop cot symbol lai de biet ten co phieu:
+  bind_cols(data_nganh_spread %>% select(symbol))
+
+umap_tbl
+```
+
+Và tiến hành vẽ biểu đồ:
+
+```{r, fig.align='center'}
+umap_tbl %>% 
+  ggplot(aes(x = V1,
+             y = V2)) +
+  
+  geom_point(alpha = .5)
+```
+
+## 4.4 Kết hợp với umap + k means
+
+```{r, fig.align='center'}
+kmeans_nganh_obj <- kmeans_nganh_tbl %>% 
+  filter(centers == 5) %>% 
+  pull(k_means) %>% 
+  pluck(1)
+
+umap_kmeans_nganh_tbl <- kmeans_nganh_obj %>% 
+  augment(data_nganh_spread) %>% 
+  select(symbol, .cluster) %>% 
+  left_join(umap_tbl, by = "symbol") %>% 
+  left_join(data_nganh_tbl %>% select(symbol, sector, san) %>% distinct() , by = "symbol")
+
+g <- umap_kmeans_nganh_tbl %>% 
+  mutate(label_text = str_glue("Stock: {symbol}
+                               Nganh: {sector}
+                               San: {san}")) %>% 
+  
+  ggplot(aes(x = V1,
+             y = V2,
+             color = .cluster,
+             text = label_text)) +
+  
+  geom_point(alpha = .5) + 
+  
+  scale_colour_brewer(palette = "Set1")
+
+g %>% ggplotly(tooltip = "text")
+```
+Sau khi kết hợp với umap và thuật toán k mean để phân cụm các cổ phiếu thì tôi có kết quả như trên. 
+
+Nhìn sơ qua vào khu vực chính giữa thì ta không thấy nó fit gì cả. Những doanh nghiệp này ghi nhận sự biến động giá hoàn toàn ngẫu nhiên, không liên quan gì tới nhau.
+
+Để ý kỹ có 3 điểm trên biểu đồ làm tôi quan tâm:
+
+- Góc dưới, màu tím là một vài doanh nghiệp xây dựng, bất động sản có xu hướng biến động giá tương tự nhau được xếp lại thành một cụm.
+
+- Góc phải bên dưới, màu xanh xanh biển
+
+Và khu vực này:
+
+<center>
+![](https://i.imgur.com/DRBGinw.png)
+</center>
+
+Đó là một nhóm các cổ phiếu ngân hàng, chứng khoán, bất động sản có sự tương đồng lớn.
+
+---
+
+# 5. Kết luận:
+
+Cách thức này không phù hợp với ý tưởng phân ngành dựa vào biến động giá cổ phiếu do tôi đề ta hoặc là sự biến động giá cổ phiếu ở thị trường chứng khoán Việt Nam ít phụ thuộc vào ngành nghề, mà bị tác động bởi yếu tố nội tại của chính cổ phiếu đó nhiều hơn. 
+
+Có thể cái mà tôi đang tìm kiếm không phải là cái mà các thuật toán này hiển thị. Hoặc là các thuật toán này không mang lại ý nghĩa gì trong đây cả. 
+
+Tuy nhiên, kết quả có thể cho ta biết được một vài cổ phiếu có xu hướng di chuyển đồng đều, tương đồng với nhau.
+
+
+Trong quá trình tôi phân tích, tôi nhận ra rằng dữ liệu lấy từ CafeF rất nhiều thiếu sót.
+
+Ví dụ như cổ phiếu ngân hàng ACB.
+
+```{r}
+data_nganh_raw_tbl %>% 
+  filter(symbol == "ACB")
+```
+Vì ACB chuyển sàn từ HNX sang HOSE nên dữ của CafeF đã loại bỏ hết toàn bộ giá của ACB trên HNX và chỉ cập nhật giá của ACB từ tháng 12/2020 trở đi... Điều đó đồng nghĩa rằng dữ liệu miễn phí từ CafeF này không phù hợp cho bất kỳ hoạt động phân tích nào.
+
+Tôi chỉ biết khóc trước tình cảnh này. Thôi thì đã làm tới đây, hẹn một ngày nào đó tôi có khả năng tiếp cận tới nguồn dữ liệu tốt hơn (với cách thức nhanh hơn) thì sẽ làm lại, và hy vọng rằng sẽ có kết quả tốt hơn.
