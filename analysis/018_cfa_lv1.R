@@ -2,12 +2,8 @@
 
 library(tidyverse)
 library(lubridate)
-
 library(tidyquant)
 
-library(corrplot)
-
-library(correlation)
 
 source("header.R")
 
