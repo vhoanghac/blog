@@ -3,7 +3,6 @@
 library(tidyverse)
 library(lubridate) # Date, time
 library(tidyquant)
-library(Quantfunctions)
 library(plotly)
 
 
@@ -171,12 +170,9 @@ ve_bieu_do <- function(thoigian = "2005-01-01"){
 }
 
 
-
 ## Ve bieu do ngay cu the:
 
 ve_bieu_do("2020-01-01")
-
-
 
 
 ########################################
@@ -246,6 +242,80 @@ plot_vfm <- result_vfm_buy_monthly_total %>%
 full_plot_vfm <- plot_vfm %>% ggplotly(tooltip = "text")
 
 htmltools::save_html(full_plot_vfm, "full_plot_vfm.html")
+
+
+########################################
+# 4. Buy monthly VNINDEX: ----
+########################################
+
+vnindex_tbl <- get_data_co_phieu() %>% 
+  filter(symbol == "^VNINDEX")
+
+
+vnindex_buy_monthly <- vnindex_tbl %>% 
+  filter(date >= "2007-03-01") %>% 
+  mutate(year = year(date),
+         month = month(date)) %>% 
+  group_by(year, month) %>% 
+  filter(date == first(date)) %>% 
+  ungroup()
+
+result_vnindex_buy_monthly <- vnindex_buy_monthly %>% 
+  mutate(free_money = 10000000) %>% 
+  mutate(buy_ccq = free_money / price) %>% 
+  mutate(ccq = cumsum(buy_ccq)) %>% 
+  mutate(asset = price * ccq) 
+
+result_vnindex_buy_monthly_total <- result_vnindex_buy_monthly %>% 
+  add_row(date = last(vnindex_tbl)$date,
+          price = last(vnindex_tbl)$price,
+          year = year(date),
+          month = month(date),
+          free_money = 0,
+          buy_ccq = 0,
+          ccq = last(result_vnindex_buy_monthly$ccq),
+          asset = ccq * price)
+
+# PLOT:
+plot_vnindex <- result_vnindex_buy_monthly_total %>% 
+  mutate(asset_label = scales::number(asset, suffix = " VND", big.mark = "\\."),
+         ccq_label = scales::number(ccq, big.mark = "\\."),
+         
+         sum_money = cumsum(free_money),
+         sum_money_label = scales::number(sum_money, suffix = " VND", big.mark = "\\.")) %>% 
+  
+  mutate(label_text = str_glue("Thoi gian: {date}
+                               Tong tai san: {asset_label}
+                               Tien dau tu: {sum_money_label} 
+                               So luong ccq: {ccq_label}")) %>% 
+  
+  ggplot(aes(x = date,
+             y = asset,
+             text = label_text)) +
+  
+  geom_line(aes(group = 1), color = "firebrick4") + 
+  
+  geom_col(aes(y = sum_money)) +
+  
+  scale_y_continuous(label = scales::number_format(suffix = " VND", big.mark = "\\."),
+                     breaks = scales::pretty_breaks(n = 10)) +
+  
+  scale_x_date(breaks = scales::pretty_breaks(12)) + theme_tq() + theme2 +
+  
+  labs(x = "",
+       y = "") +
+  
+  ggtitle(str_glue("Tổng tài sản \u0111ầu t\u01B0 vào VNINDEX từ 03/2007"))
+
+
+# PLOTLY:
+
+full_plot_vnindex <- plot_vnindex %>% 
+  ggplotly(tooltip = "text")
+
+htmltools::save_html(full_plot_vnindex, "full_plot_vnindex.html")
+
+
 
 # #### TODO ####
 # 
