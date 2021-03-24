@@ -1,0 +1,728 @@
+---
+title: "Finhay"
+author: "VHH"
+output: 
+  flexdashboard::flex_dashboard:
+      orientation: rows
+      
+runtime: shiny
+---
+
+
+```{r setup, message = FALSE}
+# Packages:
+library(tidyverse)
+library(highcharter)
+library(tidyquant)
+library(timetk)
+library(shiny)
+library(flexdashboard)
+```
+
+
+Sidebar {.sidebar}
+=====================================
+
+```{r}
+# Chon danh muc:
+fluidRow(column(10, numericInput("w1", "T\u1ef7 tr\u1ecdng danh m\u1ee5c R\u00f9a %", 20, min = 0, max = 100)))
+fluidRow(column(10, numericInput("w2", "T\u1ef7 tr\u1ecdng danh m\u1ee5c C\u00f2 Tr\u1eafng %", 20, min = 0, max = 100)))
+fluidRow(column(10, numericInput("w3", "T\u1ef7 tr\u1ecdng danh m\u1ee5c Voi %", 20, min = 0, max = 100)))
+fluidRow(column(10, numericInput("w4", "T\u1ef7 tr\u1ecdng danh m\u1ee5c Sao La %", 20,  min = 0, max = 100)))
+fluidRow(column(10, numericInput("w5", "T\u1ef7 tr\u1ecdng danh m\u1ee5c Tr\u00e2u %", 20,  min = 0, max = 100)))
+
+# Ngay bat dau dau tu
+fluidRow(
+  column(10,
+  dateInput(inputId = "date", 
+            label = "B\u1eaft \u0111\u1ea7u:",
+            value = "2017-01-13",
+            format = "yyyy-mm-dd")))
+
+# Rebalance:
+fluidRow(
+  column(10,
+         selectInput(inputId = "rebalance",
+                     label = "T\u1ea7n su\u1ea5t t\u00e1i c\u00e2n b\u1eb1ng t\u1ef7 tr\u1ecdng:", 
+                     c("Năm" = "years",
+                       "Quý" = "quarters",
+                       "Th\u00e1ng" = "months",
+                       "Tuan" = "weeks"))
+         )
+)
+
+
+# Window:
+fluidRow(
+  column(5, numericInput(inputId = "window",
+                         label = "Rolling (ng\u00e0y)",
+                         value = 90,
+                         min = 30,
+                         max = 120,
+                         step = 1)),
+  
+  # Risk-free rate input:
+  column(5, numericInput(inputId = "rfr",
+                         label = "L\u00e3i su\u1ea5t n\u0103m %",
+                         value = 6.5))
+)
+
+
+
+actionButton("go", label = "Ch\u1ea1y")
+
+
+# Get window:
+window <- eventReactive(input$go, {
+  input$window
+})
+
+# Get weight:
+
+
+# Portfolio returns:
+
+finhay_returns <- eventReactive(input$go, {
+  
+  finhay_tidied_tbl <- read_rds("data/finhay_tidied_tbl.rds")
+  
+  finhay_returns <- finhay_tidied_tbl %>% 
+    group_by(symbol) %>% 
+    filter(date >= input$date) %>%
+    tq_transmute(select = price, 
+                 mutate_fun = periodReturn, 
+                 period = "daily",
+                 type = "log",
+                 col_rename = "returns") %>% 
+    ungroup()
+  
+})
+
+
+finhay_returns_xts <- eventReactive(input$go, {
+  
+  finhay_returns_data <- finhay_returns()
+  
+  finhay_returns_xts <- finhay_returns_data %>% 
+    spread(symbol, returns) %>% 
+    tk_xts(date_var = date, silent = TRUE)
+  
+})
+
+
+portfolio_returns_xts <- eventReactive(input$go, {
+  
+  validate(need(input$w1 + input$w2 + input$w3 + input$w4 + input$w5 == 100,
+                "T\u1ed5ng danh m\u1ee5c ph\u1ea3i b\u1eb1ng 100%"))
+  
+  w <- c(input$w1/100, input$w2/100, 
+         input$w3/100, input$w4/100, input$w5/100)
+  
+  portfolio_returns_xts <- Return.portfolio(R = finhay_returns_xts(), 
+                                            rebalance_on = input$rebalance,
+                                            verbose = TRUE,
+                                            weights = w,
+                                            contribution = TRUE)
+  
+  
+})
+
+
+portfolio_returns <- eventReactive(input$go, {
+  
+  validate(need(input$w1 + input$w2 + input$w3 + input$w4 + input$w5 == 100,
+                "T\u1ed5ng danh m\u1ee5c ph\u1ea3i b\u1eb1ng 100%"))
+  
+  w <- c(input$w1/100, input$w2/100, 
+         input$w3/100, input$w4/100, input$w5/100)
+  
+  # r_xts <- portfolio_returns_xts()
+  
+   
+  portfolio_returns <- finhay_returns() %>%
+    # tk_tbl(rename_index = "date") %>% 
+    # rename(returns = portfolio.returns)
+    
+    tq_portfolio(assets_col = symbol,
+                 returns_col = returns,
+                 weights = w,
+                 rebalance_on = input$rebalance,
+                 col_rename = "returns")
+    
+})   
+
+
+
+portfolio_benchmark_returns <- eventReactive(input$go, {
+  
+  w <- c(0.2, 0.2, 0.2, 0.2, 0.2)
+
+  portfolio_benchmark_returns <- finhay_returns() %>% 
+    tq_portfolio(assets_col = symbol,
+                 returns_col = returns,
+                 weights = w,
+                 rebalance_on = input$rebalance,
+                 col_rename = "returns")
+    
+})   
+
+
+# Rolling Standard deviation
+portfolio_rolling_sd <- eventReactive(input$go, {   
+  
+    portfolio_rolling_sd <- portfolio_returns() %>% 
+      tq_mutate(select = returns,
+                mutate_fun = rollapply,
+                width = window(),
+                FUN = sd,
+                align = "right",
+                col_rename = ("rolling_sd")) %>% 
+      select(date, rolling_sd) %>% 
+      na.omit()
+})   
+ 
+
+
+#### Sharpe: #### #### #### ####
+
+# Risk free rate:
+rfr <- eventReactive(input$go, {
+  (input$rfr/100) / 252
+})
+
+
+# Function rolling sharpe:
+
+rolling_sharpe_cmd <- function(x){
+  
+  SharpeRatio(x,
+              Rf = rfr(),
+              FUN = "StdDev")
+  
+}
+
+
+# 1. Market portfolio:
+market_returns <- eventReactive(input$go, {
+
+  vnindex_tidied_tbl <- read_rds("data/vnindex_tidied_tbl.rds")
+
+  market_returns <- vnindex_tidied_tbl %>%
+    filter(date >= input$date) %>%
+    tq_transmute(select = price,
+                 mutate_fun = periodReturn,
+                 period = "daily",
+                 type = "log",
+                 col_rename = "returns")
+})
+
+
+
+# Market sharpe:
+market_sharpe <- eventReactive(input$go, {
+
+  market_sharpe <- market_returns() %>%
+    tq_performance(Ra = returns,
+                   performance_fun = SharpeRatio,
+                   Rf = rfr(),
+                   FUN = "StdDev")
+
+})
+
+
+
+# Rolling market sharpe ratio:
+
+market_rolling_sharpe <- eventReactive(input$go, {
+
+  market_rolling_sharpe <- market_returns() %>%
+    tq_mutate(select = returns,
+              mutate_fun = rollapply,
+              width = window(),
+              align = "right",
+              FUN = rolling_sharpe_cmd,
+              col_rename = "sharpe") %>%
+    select(date, sharpe)
+})
+
+
+
+# 2. Finhay Portfolio:
+
+# Sharpe Ratio:
+portfolio_sharpe <- eventReactive(input$go, {
+  
+  validate(need(input$w1 + input$w2 + input$w3 + input$w4 + input$w5 == 100,
+                "T\u1ed5ng danh m\u1ee5c ph\u1ea3i b\u1eb1ng 100%"))
+  
+  portfolio_sharpe <- portfolio_returns() %>% 
+    tq_performance(Ra = returns,
+                   performance_fun = SharpeRatio,
+                   Rf = rfr(),
+                   FUN = "StdDev")
+  
+})
+
+
+# Rolling Sharpe:
+
+portfolio_rolling_sharpe <- eventReactive(input$go, {
+  
+  portfolio_rolling_sharpe <- portfolio_returns() %>% 
+    tq_mutate(select = returns,
+              mutate_fun = rollapply,
+              width = window(),
+              align = "right",
+              FUN = rolling_sharpe_cmd,
+              col_rename = "sharpe") %>% 
+    select(date, sharpe)
+  
+  
+})
+
+
+# # Risk CONTRIBUTION #### #### #### #### #### 
+# # Component Contribution:
+# 
+# component_contribution_matrix_fun <- function(returns, w){
+#   
+#   
+#   cov_matrix <- cov(returns)
+#   
+#   # Portfolio standard deviation
+#   
+#   sd_portfolio <- sqrt(t(w) %*% cov_matrix %*% w)
+#   
+#   # Marginal contribution:
+#   marginal_contribution <- w  %*% cov_matrix / sd_portfolio[1,1]
+#   
+#   component_contribution <- marginal_contribution * w
+#   
+#   # Percentages:
+#   component_percentages <- component_contribution / sd_portfolio[1,1]
+#   
+#   component_percentages %>% 
+#     as_tibble() %>% 
+#     gather(symbol, contribution)
+#   
+# }
+# 
+# 
+# # Function risk contribution
+# # Tinh risk contribution cua cac danh muc dua theo window (ngay)
+# 
+# risk_contribution_by_window <- function(returns,
+#                                         start = 1,
+#                                         window = 90,
+#                                         weights){
+#   
+#   start_date <- returns$date[start]
+#   end_date <- returns$date[c(start + window)]
+#   
+#   # Filter returns theo start va end:
+#   returns_filtered <- returns %>% 
+#     filter(date >= start_date & date < end_date) %>% 
+#     select(-date)
+#   
+#   # Weights
+#   
+#   w <- weights
+#   
+#   component_percentages <- component_contribution_matrix_fun(returns_filtered, w)
+#   
+#   # Add end date
+#   
+#   results <- component_percentages %>% 
+#     mutate(date = ymd(end_date)) %>% 
+#     spread(symbol, contribution) %>% 
+#     select(date, Rua, CoTrang, Voi, Saola, Trau) %>% 
+#     mutate_if(is.numeric, function(x) x * 100)
+# }
+# 
+# 
+# # Rolling Risk contribution:
+# 
+# portfolio_rolling_risk_contribution <- eventReactive(input$go, {
+#   
+#   data <- finhay_returns()
+#   
+#   finhay_returns_spread <- data %>% 
+#     spread(symbol, returns) %>% 
+#     select(date, Rua, CoTrang, Voi, Saola, Trau)
+#   
+#    w <- c(input$w1/100, input$w2/100, 
+#          input$w3/100, input$w4/100, input$w5/100)
+# 
+#    portfolio_rolling_risk_contribution <- map_df(1:(nrow(finhay_returns_spread) - input$window),
+#                                          .f = risk_contribution_by_window,
+#                                          returns = finhay_returns_spread,
+#                                          weights = w,
+#                                          window = input$window) %>% 
+#      tk_xts(date_col = date)
+#   
+# })
+
+
+#### RETURNS COMPARISON: #### #### ####
+
+# 1. Function drawdown
+drawdown_func <- function(x, name = "portfolio"){
+    
+    x %>%
+        mutate(growth = 1 * exp(cumsum(returns))) %>% 
+        mutate(maxgrowth = cummax(c(1, growth))[-1]) %>%
+        mutate(drawdown = growth / maxgrowth - 1) %>%
+        mutate(symbol = name) %>% 
+        select(date, symbol, growth, drawdown)
+        
+}
+
+portfolios_table <- eventReactive(input$go, {
+  
+  benchmark_portfolio <- portfolio_benchmark_returns()
+  
+  finhay <- finhay_returns() %>% 
+    group_by(symbol) %>% 
+    mutate(growth = 1 * exp(cumsum(returns))) %>% 
+    mutate(maxgrowth = cummax(c(1, growth))[-1]) %>%
+    mutate(drawdown = growth / maxgrowth - 1) %>% 
+    select(date, symbol, growth, drawdown) %>% 
+    ungroup()
+  
+  portfolio <- drawdown_func(portfolio_returns(), name = "portfolio")
+  
+  market <- drawdown_func(market_returns(), name = "vnindex")
+  
+  benchmark <- drawdown_func(benchmark_portfolio, name = "benchmark")
+  
+  portfolios_table <- finhay %>% 
+    bind_rows(portfolio) %>% 
+    bind_rows(benchmark) %>% 
+    mutate(symbol = symbol %>% as_factor())
+  
+})
+
+
+
+```
+
+
+Sharpe
+=====================================  
+
+Row {data-height=650}
+-------------------------------------
+
+### Rolling Sharpe
+
+```{r}
+renderHighchart({
+  
+  validate(need(input$go, "Chon du lieu roi bam nut Chay. Huong dan them tai blog vohoanghac.com. Muc PERFORMANCE se can thoi gian khoang 5 giay de he thong loc du lieu. Khong can phai bam nut Chay them mot lan nua. Du lieu cap nhat 05/03/2021."))
+  
+  port_s <- portfolio_rolling_sharpe() %>% 
+    tk_xts(date_col = date)
+  
+  port_m <- market_rolling_sharpe() %>% 
+    tk_xts(date_col = date)
+  
+  
+  highchart(type = "stock") %>% 
+    hc_title(text = "Rolling Sharpe") %>% 
+    hc_add_series(port_s,
+                  name = "Danh m\u1ee5c",
+                  color = "cornflowerblue") %>% 
+    
+    hc_add_series(port_m,
+                  name = "VNINDEX",
+                  color = "red") %>% 
+    
+    hc_navigator(enabled = FALSE) %>% 
+    hc_scrollbar(enabled = FALSE) %>% 
+    hc_exporting(enabled = TRUE) %>% 
+    
+    hc_legend(enabled = TRUE,
+              alight = "right",
+              layout = "vertical")
+    
+})
+```
+
+
+
+Column {data-width=400}
+------------------------------------
+
+### Sharpe Danh muc (theo ngay)
+
+```{r}
+renderValueBox({
+  valueBox(value = tags$p(round(portfolio_sharpe(), 4),
+                          style = "font-size: 70%;"),
+           color = "primary",
+           icon = "fa-star")
+})
+```
+
+### Sharpe VNINDEX (theo ngay)
+
+```{r}
+renderValueBox({
+  valueBox(value = tags$p(round(market_sharpe(), 4),
+                          style = "font-size: 70%;"),
+           color = "primary",
+           icon = "fa-podium")
+})
+
+```
+
+
+
+
+PERFORMANCE
+=======================================
+
+Row {data-height=650}
+------------------------------------
+
+
+###  Thành quả đầu tư 1 đồng vào các danh mục
+
+```{r}
+renderHighchart({
+  
+  portfolios_growth_xts <- portfolios_table() %>% 
+    select(date, symbol, growth) %>% 
+    mutate(growth = round(growth, 4)) %>% 
+    spread(symbol, growth)%>% 
+    tk_xts(date_var = date, silent = TRUE)
+  
+  highchart(type = "stock") %>% 
+    hc_add_series(portfolios_growth_xts[, 1],
+                  name = names(portfolios_growth_xts[, 1])) %>% 
+    
+    hc_add_series(portfolios_growth_xts[, 2],
+                  name = names(portfolios_growth_xts[, 2])) %>% 
+    
+    hc_add_series(portfolios_growth_xts[, 3],
+                  name = names(portfolios_growth_xts[, 3])) %>% 
+    
+    hc_add_series(portfolios_growth_xts[, 4],
+                  name = names(portfolios_growth_xts[, 4])) %>% 
+    
+    hc_add_series(portfolios_growth_xts[, 5],
+                  name = names(portfolios_growth_xts[, 5])) %>% 
+    
+    hc_add_series(portfolios_growth_xts[, 6],
+                  name = "Danh M\u1ee5c") %>% 
+    
+    hc_add_series(portfolios_growth_xts[, 7],
+                  name = names(portfolios_growth_xts[, 7])) %>% 
+    
+    hc_add_theme(hc_theme_flat()) %>% 
+    hc_yAxis(
+        labels = list(format = "{value}"),
+        opposite = FALSE) %>% 
+    hc_navigator(enabled = FALSE) %>% 
+    hc_scrollbar(enabled = FALSE) %>% 
+    hc_legend(enabled = TRUE) %>% 
+    hc_exporting(enabled = TRUE)
+  
+})
+
+```
+
+Column
+------------------------------------
+
+### Mức sụt giảm vốn từ đỉnh:
+
+```{r}
+
+renderHighchart({
+  
+  portfolios_drawdown_xts <- portfolios_table() %>% 
+    select(date, symbol, drawdown) %>% 
+    mutate(drawdown = round(drawdown * 100, 2)) %>% 
+    spread(symbol, drawdown) %>% 
+    tk_xts(date_var = date, silent = TRUE)
+  
+  
+  highchart(type = "stock") %>% 
+    hc_add_series(portfolios_drawdown_xts[, 1],
+                  name = names( portfolios_drawdown_xts[, 1])) %>% 
+    
+    hc_add_series(portfolios_drawdown_xts[, 2],
+                  name = names( portfolios_drawdown_xts[, 2])) %>% 
+    
+    hc_add_series(portfolios_drawdown_xts[, 3],
+                  name = names( portfolios_drawdown_xts[, 3])) %>% 
+    
+    hc_add_series(portfolios_drawdown_xts[, 4],
+                  name = names( portfolios_drawdown_xts[, 4])) %>% 
+    
+    hc_add_series(portfolios_drawdown_xts[, 5],
+                  name = names( portfolios_drawdown_xts[, 5])) %>% 
+    
+    hc_add_series(portfolios_drawdown_xts[, 6],
+                  name = "Danh M\u1ee5c") %>% 
+    
+    hc_add_series(portfolios_drawdown_xts[, 7],
+                  name = names( portfolios_drawdown_xts[, 7])) %>% 
+    
+    hc_add_theme(hc_theme_flat()) %>% 
+    hc_yAxis(
+        labels = list(format = "{value}%"),
+        opposite = FALSE) %>% 
+    hc_navigator(enabled = FALSE) %>% 
+    hc_scrollbar(enabled = FALSE) %>% 
+    hc_legend(enabled = TRUE) %>% 
+    hc_exporting(enabled = TRUE)
+  
+  
+  
+})
+
+```
+
+### Rolling Stdev
+
+```{r}
+renderHighchart({
+  
+  port_rolling_hc <- portfolio_rolling_sd() %>% 
+    tk_xts(date_col = date) %>% 
+    round(., 4) * 100
+  
+  highchart(type = "stock") %>% 
+    hc_title(text = "Rolling Stdev (ngay)") %>% 
+    hc_yAxis(title = list(text = "Stdev"),
+             labels = list(format = "{value}%"),
+             opposite = FALSE) %>% 
+    hc_add_series(port_rolling_hc,
+                  name = "Do lech chuan",
+                  color = "cornflowerblue") %>% 
+    hc_navigator(enabled = FALSE) %>% 
+    hc_scrollbar(enabled = FALSE) %>% 
+    hc_exporting(enabled = TRUE) %>% 
+    hc_add_theme(hc_theme_flat())
+  
+  
+})
+
+```
+
+
+<!-- ### EOP Weight: -->
+
+<!-- ```{r} -->
+<!-- renderHighchart({ -->
+
+<!--   p_returns_xts <- portfolio_returns_xts() -->
+
+<!--   eop_weight <- p_returns_xts$EOP.Weight -->
+
+<!-- highchart() %>% -->
+<!--     hc_chart(type = "area") %>% -->
+<!--     hc_title(text = "EOP Weight for each asset") %>% -->
+
+<!--     hc_plotOptions(area = list( -->
+<!--         stacking = "percent", -->
+<!--         lineColor = "#ffffff", -->
+<!--         lineWidth = 1, -->
+<!--         marker = list( -->
+<!--             lineWidth = 1, -->
+<!--             lineColor = "#ffffff" -->
+<!--         ) -->
+<!--     )) %>% -->
+
+<!--     hc_add_series(eop_weight[, 1], -->
+<!--                   name = "Rua") %>% -->
+
+<!--     hc_add_series(eop_weight[, 2], -->
+<!--                   name = "CoTrang") %>% -->
+
+<!--     hc_add_series(eop_weight[, 3], -->
+<!--                   name = "Voi") %>% -->
+
+<!--     hc_add_series(eop_weight[, 4], -->
+<!--                   name = "Saola") %>% -->
+
+<!--     hc_add_series(eop_weight[, 5], -->
+<!--                   name = "Trau") %>% -->
+
+<!--     hc_yAxis(labels = list(format = "{value}%"), -->
+<!--              opposite = FALSE) %>% -->
+
+<!--     hc_xAxis(type = "datetime") %>% -->
+
+<!--     hc_tooltip(pointFormat = "<span style = \'color:{series.color}\'>{series.name}</span>:<b>{point.percentage:.1f}%</b><br/>", -->
+<!--                shared = TRUE) %>% -->
+
+<!--     hc_navigator(enabled = FALSE) %>% -->
+<!--     hc_scrollbar(enabled = FALSE) %>% -->
+<!--     hc_exporting(enabled = TRUE) %>% -->
+<!--     hc_add_theme(hc_theme_flat()) %>% -->
+<!--     hc_legend(enabled = TRUE) -->
+
+<!-- }) -->
+
+
+
+<!-- ``` -->
+
+
+
+<!-- ### Dong gop Rui ro -->
+
+<!-- ```{r} -->
+
+<!-- renderHighchart({ -->
+<!--   portfolio_rr_contribution <- portfolio_rolling_risk_contribution() -->
+
+
+<!--   highchart() %>% -->
+<!--     hc_chart(type = "area") %>% -->
+<!--     hc_title(text = "Risk Contribution") %>% -->
+
+<!--     hc_plotOptions(area = list( -->
+<!--       stacking = "percent", -->
+<!--       lineColor = "#ffffff", -->
+<!--       lineWidth = 1, -->
+<!--       marker = list( -->
+<!--         lineWidth = 1, -->
+<!--         lineColor = "#ffffff" -->
+<!--       ) -->
+<!--     )) %>% -->
+
+<!--     hc_add_series(portfolio_rr_contribution[, 1], -->
+<!--                   name = names(portfolio_rr_contribution[, 1])) %>% -->
+
+<!--     hc_add_series(portfolio_rr_contribution[, 2], -->
+<!--                   name = names(portfolio_rr_contribution[, 2])) %>% -->
+
+<!--     hc_add_series(portfolio_rr_contribution[, 3], -->
+<!--                   name = names(portfolio_rr_contribution[, 3])) %>% -->
+
+<!--     hc_add_series(portfolio_rr_contribution[, 4], -->
+<!--                   name = names(portfolio_rr_contribution[, 4])) %>% -->
+
+<!--     hc_add_series(portfolio_rr_contribution[, 5], -->
+<!--                   name = names(portfolio_rr_contribution[, 5])) %>% -->
+
+<!--     hc_yAxis(labels = list(format = "{value}%"), -->
+<!--              opposite = FALSE) %>% -->
+<!--     hc_xAxis(type = "datetime") %>% -->
+
+<!--     hc_tooltip(pointFormat = "<span style = \'color:{series.color}\'>{series.name}</span>:<b>{point.percentage:.1f}%</b><br/>", -->
+<!--                shared = TRUE) %>% -->
+
+<!--     hc_navigator(enabled = FALSE) %>% -->
+<!--     hc_scrollbar(enabled = FALSE) %>% -->
+<!--     hc_exporting(enabled = TRUE) %>% -->
+<!--     hc_add_theme(hc_theme_flat()) %>% -->
+<!--     hc_legend(enabled = TRUE) -->
+
+<!-- }) -->
+
+<!-- ``` -->
