@@ -3,6 +3,7 @@ library(tidyverse)
 library(lubridate)
 library(readxl)
 library(tidyquant)
+library(timetk)
 library(ggrepel) #Label
 
 # Other
