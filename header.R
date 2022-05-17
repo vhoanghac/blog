@@ -3,40 +3,46 @@ require(tidyverse)
 require(data.table)
 require(lubridate)
 
-# Themes:
+# 1. Themes:
 theme <- theme(
   text = element_text(family = "serif", size = 15),
   
-  title = element_text(color = "#8b0000", size = 17),
+  title = element_text(color = "#8b0000", size = 20),
   
   plot.title = element_text(hjust = 0.5),
   
   axis.text.y = element_text(face = "bold"),
   
-  strip.text = element_text(face = "bold", size = 13),
+  strip.text = element_text(face = "bold", size = 14),
   
   plot.subtitle = element_text(hjust = 0.5, size = 16),
-  legend.position = "none",
-  plot.caption = element_text(size = 14, color = "black", face = "italic"))  # No Legends
+  
+  legend.position = "none", # No Legends
+  
+  plot.caption = element_text(size = 14, color = "black", face = "italic"))  
 
 
 theme2 <- theme(
   text = element_text(family = "serif", size = 15),
   
-  title = element_text(color = "#8b0000", size = 17),
+  title = element_text(color = "#8b0000", size = 20),
   
   plot.title = element_text(hjust = 0.5),
   
   axis.text.y = element_text(face = "bold"),
   
-  strip.text = element_text(face = "bold", size = 13),
+  strip.text = element_text(face = "bold", size = 14),
   
   
   plot.subtitle = element_text(hjust = 0.5, size = 16),
-  plot.caption = element_text(size = 14, color = "black", face = "italic"))
+  plot.caption = element_text(size = 14, color = "black", face = "italic"),
+  
+  legend.key.size = unit(1, 'cm'),
+  legend.text = element_text(size = 16))
 
 
-# Function lay gia co phieu
+# 2. Function lay gia co phieu
+# Lay tu cophieu68: https://www.cophieu68.vn/export/metastock_all.php
 
 get_data_co_phieu <- function(ticker = "VNM", all = FALSE){
   
@@ -50,6 +56,7 @@ get_data_co_phieu <- function(ticker = "VNM", all = FALSE){
 
   
   # IF ELSE:
+  # Lua chon tat ca data hoac co phieu bat ky
   
   # Full stock data:
   if(all == TRUE){
@@ -71,7 +78,7 @@ get_data_co_phieu <- function(ticker = "VNM", all = FALSE){
   
 }
 
-# Function import file investing.com
+# 3. Function import file investing.com
 
 get_data_investing <- function(data_dir){
   read_csv(data_dir,
@@ -81,7 +88,7 @@ get_data_investing <- function(data_dir){
     janitor::clean_names(.)
 }
 
-# Head Tail data
+# 4. Head Tail data
 
 head.tail <- function(data){
   print(head(data, 5))
