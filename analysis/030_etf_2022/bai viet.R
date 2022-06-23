@@ -34,7 +34,7 @@ list$`030_etf_mfunds_2022/01_data/tidied/VNDAF.csv` <- list$`030_etf_mfunds_2022
   add_row(date = as_date("2017-12-31"), price = 10000)
 
 # Convert to annual data:
-list %>% 
+list_converted <- list %>% 
   set_names(datanames) %>% 
   
   lapply(function(x) {
@@ -54,49 +54,27 @@ list %>%
                    period     = "yearly",
                    col_rename = "returns",
                    leading    = FALSE)
-     
-  }) %>%
-  
-  list2env(envir = .GlobalEnv)
+    
+  })
 
 
 # Add other equity mutual funds
-
 # VEF: https://www.dragoncapital.com/vef/
-vef <- tibble(date = as_date(dcds$date[11:18]),
-       vef = as.double(c(0.1831, 0.1325, 0.1936, 0.4135, -0.0343, -0.0009, 0.1608, 0.5408)))
+vef <- tibble(date = as_date(list_converted$dcds$date[12:18]),
+              vef = as.double(c(0.1325, 0.1936, 0.4135, -0.0343, -0.0009, 0.1608, 0.5408)))
 
 
 # 3. Analysis #### ####
 # Only show the annual returns of E1VFVN30 vs. other equity mutual funds. 
-
-# Combine data:
-# This is nuts. At the moment, I have no idea how to combine multiple dataframes all at once.
-returns_tbl <- e1vfvn30 %>%
-  select.(date, e1vfvn30 = returns) %>%
-  left_join.(dcds    %>% select.(date, dcds    = returns), by = "date") %>%
-  left_join.(dcbc    %>% select.(date, dcbc    = returns), by = "date") %>%
-  left_join.(bvfed   %>% select.(date, bvfed   = returns), by = "date") %>%
-  left_join.(bvpf    %>% select.(date, bvpf    = returns), by = "date") %>%
-  left_join.(dfvncaf %>% select.(date, dfvncaf = returns), by = "date") %>%
-  left_join.(enf     %>% select.(date, enf     = returns), by = "date") %>%
-  left_join.(mafeqi  %>% select.(date, mafeqi  = returns), by = "date") %>%
-  left_join.(magef   %>% select.(date, magef   = returns), by = "date") %>%
-  left_join.(mbvf    %>% select.(date, mbvf    = returns), by = "date") %>%
-  left_join.(ssisca  %>% select.(date, ssisca  = returns), by = "date") %>%
-  left_join.(tcef    %>% select.(date, tcef    = returns), by = "date") %>%
-  left_join.(vcbfbcf %>% select.(date, vcbfbcf = returns), by = "date") %>%
-  left_join.(veof    %>% select.(date, veof    = returns), by = "date") %>%
-  left_join.(vesaf   %>% select.(date, vesaf   = returns), by = "date") %>%
-  left_join.(vndaf   %>% select.(date, vndaf   = returns), by = "date") %>% 
-  left_join.(veil    %>% select.(date, veil    = returns), by = "date") %>% 
-  left_join.(prulink %>% select.(date, prulink = returns), by = "date") %>% 
+returns_tbl <- list_converted %>% 
+  enframe.() %>% 
+  unnest.(value) %>% 
+  rename(symbol = name) %>% 
+  pivot_wider(names_from = symbol, values_from = returns) %>% 
+  filter.(date >= "2015-01-01" & date < "2022-01-01") %>% 
+  
+  # Add other equity mutual funds
   left_join.(vef, by = "date")
-
-
-# Remove the first and last row (2014 and 2022)
-returns_tbl <- returns_tbl[-1,]
-returns_tbl <- returns_tbl[-nrow(returns_tbl),]
 
 # Analysis
 result_tbl <- returns_tbl %>%
@@ -121,7 +99,7 @@ result_tbl <- returns_tbl %>%
     date = returns_tbl$date
   ) %>%
   select.(date, n_win, n_loss, total_funds, pct_etf_win) %>%
-  mutate(date = year(date)) %>% 
+  mutate.(date = year(date)) %>% 
   mutate.(pct_label = scales::percent(pct_etf_win, accuracy = 1))
 
 # Plot:
