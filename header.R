@@ -97,7 +97,3 @@ head.tail <- function(data){
   print(head(data, 5))
   print(tail(data, 5))
 }
-
-first(mtcars)
-
-
