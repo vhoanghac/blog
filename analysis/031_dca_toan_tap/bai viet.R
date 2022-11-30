@@ -233,12 +233,12 @@ etf_lumpsum_tbl <- etf_tbl %>%
   
   mutate(ls_q = ls_cash / price) %>% 
   
-  mutate(ls_total_q = cumsum(ls_q),
+  mutate(ls_total_q             = cumsum(ls_q),
          ls_total_cash_invested = cumsum(ls_cash),
-         ls_total_value = ls_total_q * price,
-         ls_profit_pct = (ls_total_value / ls_total_cash_invested) - 1,
-         ls_profit_number = ls_total_value - ls_total_cash_invested,
-         ls_average = ls_total_cash_invested / ls_total_q) %>% 
+         ls_total_value         = ls_total_q * price,
+         ls_profit_pct          = (ls_total_value / ls_total_cash_invested) - 1,
+         ls_profit_number       = ls_total_value - ls_total_cash_invested,
+         ls_average             = ls_total_cash_invested / ls_total_q) %>% 
   
   #Labels:
   mutate(ls_total_cash_txt    = scales::number(ls_total_cash_invested, big.mark = ".", decimal.mark = ","),
