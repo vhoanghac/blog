@@ -2,10 +2,15 @@
 require(tidyverse)
 require(data.table)
 require(lubridate)
+require(ggtext) #element_markdown() - Improved text rendering for ggplot2
+
+require(showtext) #Custom font
+font_add_google("STIX Two Text", "stix")
+showtext_auto()
 
 # 1. Themes ####
 theme <- theme(
-  text = element_text(family = "serif", size = 15),
+  text = element_text(family = "stix", size = 15),
   
   title = element_text(color = "#8b0000", size = 20),
   
@@ -22,23 +27,27 @@ theme <- theme(
   plot.caption = element_text(size = 14, color = "black", face = "italic"))  
 
 
+
+#Element mark down ggtext:   # <span style = 'color:#8b0000;'>text</span>
 theme2 <- theme(
-  text = element_text(family = "serif", size = 15),
+  text = element_text(family = "stix", size = 15),
   
-  title = element_text(color = "#8b0000", size = 20),
+  title = element_text(color = "#8b0000", size = 21),
   
-  plot.title = element_text(hjust = 0.5),
+  plot.title = element_markdown(hjust = 0.5, margin=margin(0,0,10,0)),
   
   axis.text.y = element_text(face = "bold"),
   
   strip.text = element_text(face = "bold", size = 14),
   
+  plot.subtitle = element_markdown(size = 15, color = "#4C4A48", lineheight= 1.2),
   
-  plot.subtitle = element_text(hjust = 0.5, size = 16),
   plot.caption = element_text(size = 14, color = "black", face = "italic"),
   
   legend.key.size = unit(1, 'cm'),
   legend.text = element_text(size = 16))
+
+
 
 
 # 2. Function lay gia co phieu ####
@@ -79,12 +88,11 @@ theme2 <- theme(
 #   
 # }
 
-
 # 3. Function import file investing.com ####
 
-get_data_investing <- function(data_dir){
+get_data_investing <- function(data_dir, format = "%b %d, %Y"){
   read_csv(data_dir,
-           col_types = cols(Date = col_date(format = "%b %d, %Y"))) %>% 
+           col_types = cols(Date = col_date(format = format))) %>% 
     select(Date, Price) %>% 
     arrange(Date) %>% 
     janitor::clean_names(.)
