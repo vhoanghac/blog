@@ -44,7 +44,7 @@ list_converted <- list %>%
     
   }) 
 
-# 3. Tidy data #### ####
+# 3. Phân tích #### ####
 
 # 3.1 Giai đoạn 2021
 
@@ -58,11 +58,12 @@ data_2021 <- list_converted %>%
   rename(symbol = name) %>% 
   group_by(symbol) %>% 
   
-  # Lựa chọn 2020-12-01 để thay thế dòng đầu tiên = 0. Vẽ chart cho dễ hiểu
-  filter(date >= "2020-12-01" & date <= "2022-01-01") %>%
-  mutate(returns = case_when(date == "2020-12-01" ~ 0,
+  # 2021-01-01 = 0 để tính đúng lợi nhuận tích lũy dựa theo cumprod()
+  filter(date >= "2021-01-01" & date <= "2022-01-01") %>%
+  mutate(returns = case_when(date == "2021-01-01" ~ 0,
                             TRUE ~ returns)) %>% 
-  mutate(growth = cumsum(returns),
+
+  mutate(growth = cumprod(1 + returns) - 1,
          label_txt = if_else(date == max(date),
                              paste(symbol, ":", scales::percent(growth, big.mark =".", decimal.mark = ",", accuracy = 0.01)),
                              NA_character_)) %>% 
@@ -75,10 +76,10 @@ data_2022 <- list_converted %>%
   unnest(value) %>% 
   rename(symbol = name) %>% 
   group_by(symbol) %>% 
-  filter(date >= "2021-12-01" & date <= "2023-01-01") %>%
-  mutate(returns = case_when(date == "2021-12-01" ~ 0,
+  filter(date >= "2022-01-01" & date <= "2023-01-01") %>%
+  mutate(returns = case_when(date == "2022-01-01" ~ 0,
                              TRUE ~ returns)) %>% 
-  mutate(growth = cumsum(returns),
+  mutate(growth = cumprod(1 + returns) - 1,
          label_txt = if_else(date == max(date),
                              paste(symbol, ":", scales::percent(growth, big.mark =".", decimal.mark = ",", accuracy = 0.01)),
                              NA_character_)) %>% 
@@ -110,5 +111,4 @@ data_2022 %>%
   labs(x = "",
        y = "Tăng trưởng",
        title = "Tăng trưởng của các quỹ mở cổ phiếu năm 2022",
-       caption = "Nguồn dữ liệu")
-  
+       caption = "Nguồn dữ liệu: Fmarket.vn")
