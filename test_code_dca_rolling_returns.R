@@ -51,6 +51,11 @@ annualized_returns <- (final_value / total_investment)^(1/number_of_years) - 1
 # Rolling returns
 # Function to calculate rolling returns (MONTHLY data)
 
+
+# Giả định rằng mỗi khoản đầu tư bắt đầu tại đầu mỗi tháng
+#' @param rolling_period_years period để tính rolling returns. Cụ thể là 1 năm
+
+
 calculate_rolling_returns <- function(etf, investment_per_month, rolling_period_years) {
   
   # Calculate units purchased each month
