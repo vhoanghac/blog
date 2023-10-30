@@ -96,3 +96,105 @@ calculate_rolling_returns <- function(etf, investment_per_month, rolling_period_
   return(rolling_returns)
 }
 
+
+##################################################################
+
+# Calculate rolling returns
+# Version 2.0
+# Daily data
+
+# Tính toán dựa trên ngày giao dịch trong tháng
+
+etf <- get_data_vnstock("043_E1VFVN30_dai_han/01_data/raw/E1VFVN30.csv") %>% 
+  filter(date >= "2015-01-01" & date <= "2021-12-31")
+
+investment_per_month <- 1000000
+
+
+# Function to calculate rolling returns
+
+calculate_rolling_returns <- function(etf, investment_per_month, trading_day_of_month, rolling_period_days) {
+  
+  # Xác định số ngày giao dịch trong tháng
+  etf <- etf %>%
+    group_by(year = year(date), month = month(date)) %>%
+    mutate(trading_day = row_number()) %>% 
+    ungroup()
+  
+  # Tính số chứng chỉ quỹ mua tại ngày bất kì trong tháng
+  #' @param trading_day_of_month là ngày muốn bắt đầu. Ví dụ tại ngày 1 hoặc 15,
+  # là ngày giao dịch thứ nhất và thứ 15 trong tháng.
+  
+  etf <- etf %>%
+    mutate(units_purchased = if_else(trading_day == trading_day_of_month, investment_per_month / price, 0))
+  
+  # Tạo tibble để chứa giá trị rolling returns
+  rolling_returns <- tibble(
+    StartDate = as.Date(character()),
+    EndDate = as.Date(character()),
+    AnnualizedReturn = numeric()
+  )
+  
+  # Tính rolling returns
+  for (i in 1:(nrow(etf) - rolling_period_days)) {
+    start_date <- etf$date[i]
+    end_date <- etf$date[i + rolling_period_days - 1]
+    
+    # Tính số lượng chứng chỉ quỹ mua được
+    total_units <- sum(etf$units_purchased[i:(i + rolling_period_days - 1)])
+    
+    # Lấy giá cuối cùng
+    final_price <- etf$price[i + rolling_period_days - 1]
+    
+    # Tính giá trị cuối cùng của khoản đầu tư
+    final_value <- total_units * final_price
+    
+    # Tính tổng số tiền đã dùng để đầu tư
+    total_investment <- sum(etf$units_purchased[i:(i + rolling_period_days - 1)]) * etf$price[i]
+    
+    # Annualized return
+    annualized_return <- (final_value / total_investment)^(250/rolling_period_days) - 1  # 250 trading days in a year
+    
+    # Nhập dữ liệu vào rolling returns tibble
+    rolling_returns <- add_row(rolling_returns, StartDate = start_date, EndDate = end_date, AnnualizedReturn = annualized_return)
+  }
+  
+  return(rolling_returns)
+}
+
+# Xác định số ngày đầu tư
+# Ví dụ: ngày giao dịch thứ nhất, thứ hai, thứ ba... của tháng.
+trading_days_of_month <- c(1, 2, 3)  
+
+# Tạo list để lưu kết quả
+rolling_returns_1y_list <- list()
+rolling_returns_2y_list <- list()
+
+# Loop
+#' @param trading_day tương tự như i trong for (i in ...)
+
+# Ví dụ lựa chọn ngày 1 và ngày 15 để đầu tư. Thì tính từ ngày giao dịch đầu tiên và thứ 15 trong tháng.
+#' @param trading_day ở đây là ngày 1 hoặc 15. 
+#' Thay thế trading_day_of_month của function calculate_rolling_returns
+
+for (trading_day in trading_days_of_month) {
+  # Calculate 1-year (250 trading days) rolling returns
+  rolling_returns_1y_list[[paste0("day", trading_day)]] <- calculate_rolling_returns(etf, 1000000, trading_day, 250)
+  
+  # Calculate 2-years (500 trading days) rolling returns
+  rolling_returns_2y_list[[paste0("day", trading_day)]] <- calculate_rolling_returns(etf, 1000000, trading_day, 500)
+}
+
+# Giá trị StartDate trong rolling returns hiển thị thực ra là ngày đầu tiên của chu kỳ 250 ngày giao dịch
+# chứ không phải phản ánh ngày mà nhà đầu tư xuống tiền, cũng không có tính toán tại ngày đó. 
+
+print("1-Year Rolling Returns (First Trading Day of the Month):")
+print(rolling_returns_1y_list$day1)
+
+print("1-Year Rolling Returns (Second Trading Day of the Month):")
+print(rolling_returns_1y_list$day2)
+
+print("1-Year Rolling Returns (Third Trading Day of the Month):")
+print(rolling_returns_1y_list$day3)
+
+
