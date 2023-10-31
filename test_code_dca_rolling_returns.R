@@ -124,7 +124,6 @@ calculate_rolling_returns <- function(etf, investment_per_month, trading_day_of_
   # Tính số chứng chỉ quỹ mua tại ngày bất kì trong tháng
   #' @param trading_day_of_month là ngày muốn bắt đầu. Ví dụ tại ngày 1 hoặc 15,
   # là ngày giao dịch thứ nhất và thứ 15 trong tháng.
-  
 
   etf <- etf %>%
     mutate(units_purchased = if_else(trading_day == trading_day_of_month, investment_per_month / price, 0),
@@ -185,6 +184,7 @@ rolling_returns_2y_list <- list()
 #' Thay thế trading_day_of_month của function calculate_rolling_returns
 
 for (trading_day in trading_days_of_month) {
+  
   # Calculate 1-year (250 trading days) rolling returns
   rolling_returns_1y_list[[paste0("day", trading_day)]] <- calculate_rolling_returns(etf, 1000000, trading_day, 250)
   
@@ -192,16 +192,7 @@ for (trading_day in trading_days_of_month) {
   rolling_returns_2y_list[[paste0("day", trading_day)]] <- calculate_rolling_returns(etf, 1000000, trading_day, 500)
 }
 
-# Giá trị StartDate trong rolling returns hiển thị thực ra là ngày đầu tiên của chu kỳ 250 ngày giao dịch
-# chứ không phải phản ánh ngày mà nhà đầu tư xuống tiền, cũng không có tính toán tại ngày đó. 
+rolling_returns_1y_list$day1
 
-print("1-Year Rolling Returns (First Trading Day of the Month):")
-print(rolling_returns_1y_list$day1)
-
-print("1-Year Rolling Returns (Second Trading Day of the Month):")
-print(rolling_returns_1y_list$day2)
-
-print("1-Year Rolling Returns (Third Trading Day of the Month):")
-print(rolling_returns_1y_list$day3)
-
+rolling_returns_1y_list$day15
 
