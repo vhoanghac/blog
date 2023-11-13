@@ -20,7 +20,9 @@ investment_per_month <- 1000000
 
 # BASIC ##############################
 
+# MONTHLY DATA
 # Calculate units purchased each month
+
 etf_monthly <- etf_monthly %>%
   mutate(units_purchased = investment_per_month / price)
 
@@ -99,9 +101,9 @@ calculate_rolling_returns <- function(etf, investment_per_month, rolling_period_
 
 ##################################################################
 
+# DAILY DATA
 # Calculate rolling returns
 # Version 3.0
-# Daily data
 
 # Tính toán dựa trên ngày giao dịch trong tháng
 
@@ -193,6 +195,39 @@ for (trading_day in trading_days_of_month) {
 }
 
 rolling_returns_1y_list$day1
-
 rolling_returns_1y_list$day15
+
+
+##################################################################
+
+# DAILY DATA
+
+# ROLLING RETURNS SIMPLE VERSION
+etf <- get_data_vnstock("043_E1VFVN30_dai_han/01_data/raw/E1VFVN30.csv") %>% 
+  filter(date >= "2015-01-01" & date <= "2021-12-31")
+
+
+# cash flow
+investment_per_month <- 1000000
+
+# Tìm ngày giao dịch đầu tiên của tháng
+etf <- etf %>%
+  mutate(month = month(date),
+         year = year(date),
+         first_trading_day = !duplicated(paste(year, month)))
+
+
+# Tính số lượng chứng chỉ quỹ
+etf <- etf %>%
+  mutate(units_purchased = if_else(first_trading_day, investment_per_month / price, 0))
+
+# Tổng số lượng chứng chỉ quỹ và tổng tiền đầu tư
+etf <- etf %>%
+  mutate(total_units = cumsum(units_purchased),
+         total_investment = cumsum(if_else(first_trading_day, investment_per_month, 0)))
+
+# Rolling returns
+etf <- etf %>%
+  mutate(rolling_return_1y = ifelse(row_number() > 250, (lag(total_units, 250) * price / lag(total_investment, 250)) - 1, NA),
+         rolling_return_2y = ifelse(row_number() > 500, (lag(total_units, 500) * price / lag(total_investment, 500)) - 1, NA))
 
