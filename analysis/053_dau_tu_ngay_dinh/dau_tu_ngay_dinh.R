@@ -244,7 +244,6 @@ names(results2) <- paste0(names(results2), "_", "2022")
 # Xuất kết quả
 list2env(results2, envir = .GlobalEnv)
 
-
 # 6.1 Plot ETF VN30
 etf_vn30_2022 %>% head.tail()
 
@@ -274,7 +273,6 @@ etf_vn30_2022 %>%
        title   = "Đầu tư ETF VN30 bằng phương pháp DCA từ năm 2022",
        caption = "Giả định đầu tư 3.000.000 VND vào ngày đầu tiên của mỗi tháng từ năm 2022 đến 14/08/2024.
        Nguồn: TradingView")
-
 
 
 # 6.2 Plot ETF MIDCAP 2022
@@ -308,8 +306,8 @@ etf_midcap_2022 %>%
        Giả định đầu tư 3.000.000 VND vào ngày đầu tiên của mỗi tháng từ năm 2022 đến 14/08/2024.
        Nguồn: TradingView")
 
-# 6.3 Plot ETF VND 2022
 
+# 6.3 Plot ETF VND 2022
 etf_vnd_2022 %>% head.tail()
 
 etf_vnd_2022 %>% 
@@ -338,9 +336,6 @@ etf_vnd_2022 %>%
        title   = "Đầu tư ETF VN DIAMOND bằng phương pháp DCA từ năm 2022",
        caption = "Giả định đầu tư 3.000.000 VND vào ngày đầu tiên của mỗi tháng từ năm 2022 đến 14/08/2024.
        Nguồn: TradingView")
-
-
-
 
 # 5.3 Plot MF DCDS 2022
 mf_dcds_2022 %>% head.tail()
@@ -372,9 +367,6 @@ mf_dcds_2022 %>%
        caption = "Giả định đầu tư 3.000.000 VND vào ngày đầu tiên của mỗi tháng từ năm 2022 đến 14/08/2024.
        Nguồn: Fmarket và website của quỹ")
 
-
-
-
 # 5.4 Plot MF VESAF 2022
 mf_vesaf_2022 %>% head.tail()
 
@@ -404,15 +396,3 @@ mf_vesaf_2022 %>%
        title   = "Đầu tư VESAF bằng phương pháp DCA từ năm 2022",
        caption = "Giả định đầu tư 3.000.000 VND vào ngày đầu tiên của mỗi tháng từ năm 2022 đến 14/08/2024.
        Nguồn: TradingView")
-
-
-
-# Bonus
-etf_vn30_2018
-
-etf_mid
-
-write_csv(mf_vesaf_2018, "mf_vesaf_2018.csv")
-
-
-mf_vesaf_2018 %>% head.tail()
